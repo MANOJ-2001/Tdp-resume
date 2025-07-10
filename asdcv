@@ -1,60 +1,64 @@
-We’re planning to build an AI-powered assistant tailored for our data engineering team, specifically focused on the healthcare domain. The assistant will help generate view schemas based on our internal rules and regulations — including PHI/API tagging, schema types (like onshore, offshore, interview), and security table mappings.
+I am designing a sophisticated, multi-agent Retrieval-Augmented Generation (RAG) system that integrates multiple intelligent agents into a unified conversational interface. The system will be deployed via a Streamlit-based chatbot UI, which I will develop. I need assistance in architecting and implementing the backend logic for the following agents and capabilities:
 
-The assistant will be accessible through a chatbot interface, and we plan to build the entire solution on Azure, using Azure AI Foundry as our core platform.
+🔹 1. Conversational RAG Agent (Knowledge Retrieval)
+Purpose: To provide grounded, context-aware answers based on enterprise documents.
+Functionality:
+Ingest documents from an Azure Storage Container.
+Perform chunking, embedding, and indexing using either Azure AI Search or LangChain-compatible vector stores.
+Retrieve relevant content and generate responses using a RAG pipeline.
+Ensure responses are traceable to source documents for transparency and compliance.
+🔹 2. View Script Generation Agent (Policy-Aware SQL Generator)
+Purpose: To dynamically generate SQL view scripts based on user input and organizational policies.
+Functionality:
+Accept user inputs such as table name, column names, and schema name.
+Reference uploaded documents containing organization-specific policies and regulatory guidelines.
+Generate SQL view scripts that comply with these rules.
+Handle follow-up queries related to view creation, policy interpretation, or compliance validation.
+🔹 3. Email Automation Agent
+Purpose: To send contextually appropriate emails based on user queries.
+Functionality:
+Classify the user’s intent and generate relevant email content.
+Integrate with an email service (e.g., Microsoft Graph API or SMTP).
+Automatically send the generated content to the user’s email address.
+🔹 4. JSON Generation & Validation Agent
+Purpose: To create and validate complex JSON structures based on predefined rules.
+Functionality:
+Ingest a document containing detailed JSON schema rules and validation logic.
+Generate JSON outputs based on user prompts.
+Validate the generated JSON against the rules and provide feedback or corrections.
+🔹 5. Intent Classification & Routing Layer
+Purpose: To intelligently route user queries to the appropriate agent.
+Functionality:
+Use an LLM or lightweight classifier to detect user intent.
+Route the query to one of the following:
+RAG Agent (for knowledge retrieval)
+SQL View Generator
+Email Agent
+JSON Validator
+Ensure seamless transitions between agents within the same chat session.
 
-🧭 Here’s the methodology we intend to follow:
-1. Planning
-We’ll start by defining the use case in detail and identifying the agents we need:
+🔹 6. To continuously improve the assistant, we include a user feedback loop.
+ Feedback Collection:
+•	Users can rate responses using thumbs-up/down icons.
+•	Optional comments allow users to explain their feedback.
 
-A Schema Agent to generate view scripts
-A Compliance Agent to validate PHI/API tagging
-A Workflow Agent to trigger downstream processes like Databricks or Data Factory
-We’ll also gather all our internal documentation — rules, regulations, and schema templates — to serve as the knowledge base.
 
-2. Azure Setup
-Next, we’ll provision the necessary Azure services:
+Storage & Usage:
+•	Feedback, along with the query, context, and response, is stored in Azure Storage.
+•	This data is used to:
+•	Improve document retrieval
+•	Identify gaps in the knowledge base
+🔹 Additional Requirements:
+All agents must operate within a unified Streamlit interface.
+The system should support multi-turn conversations and maintain context across interactions.
+Document ingestion should be automated and scalable, supporting updates and re-indexing.
+The architecture should be modular, allowing for future expansion (e.g., adding more agents or switching vector DBs).
+Request:
+Please provide a detailed implementation strategy, including:
 
-Azure AI Foundry for orchestrating the AI workflows
-Azure OpenAI for LLM capabilities
-Azure AI Search for document retrieval (RAG)
-Azure Blob Storage for storing internal documents
-Azure Key Vault for managing secrets
-We’ll also enable Managed Identities and configure RBAC to ensure secure access across services.
-
-3. RAG Setup (Retrieval-Augmented Generation)
-We plan to store our documents in Blob Storage, then index them using Azure AI Search.
-
-The documents will be chunked and embedded into vectors.
-This will allow us to retrieve relevant rules dynamically when a user asks a question.
-4. Prompt Flow Design
-Using Prompt Flow, we’ll orchestrate the logic as follows:
-
-An Intent Classifier will determine which agent should handle the query.
-A RAG Retriever will fetch relevant rules from Azure AI Search.
-The LLM Prompt will combine the user query with the retrieved context.
-A Post-Processing step will format the output (e.g., SQL view script).
-Each agent will be implemented as a tool or sub-flow within Prompt Flow.
-
-5. Testing
-We’ll create test cases for each agent and use Prompt Flow’s built-in tools to evaluate:
-
-The relevance of retrieved documents
-The accuracy of the generated schema
-Latency and performance
-6. Deployment
-Once tested, we’ll deploy the Prompt Flow as an API endpoint.
-
-For the frontend, we’re considering options like a Web App, Power Apps, or a Teams Bot for internal access.
-7. Orchestration
-From within Prompt Flow, we’ll trigger external workflows such as:
-
-Databricks notebooks for data processing
-Azure Data Factory pipelines for ETL
-Azure SQL jobs for schema deployment
-8. Governance
-We’ll apply strict governance measures:
-
-Use system prompts and content filters to restrict the model to healthcare and internal topics only
-Enable logging, monitoring, and auditing using Azure Monitor and Application Insights
-✅ Expected Outcome
-The result will be a secure, intelligent, and highly specialized AI assistant that empowers our developers to generate compliant view schemas quickly and accurately — all while staying aligned with our healthcare regulations and internal standards.
+Recommended most efficient tools, frameworks, and libraries for each agent.
+Suggested architecture .
+list all frequest asked questions related to these.
+Best practices for integrating Azure AI Search or LangChain with Streamlit.
+which tool is versioning, emedding and re-indexing
+Security and access control considerations for email and document handling.
