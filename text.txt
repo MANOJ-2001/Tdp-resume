@@ -1,0 +1,91 @@
+Here is the current list of **Core Functionalities** implemented in your multi-agent system, based on the finalized code:
+
+---
+
+### ✅ **Core Functionalities**
+
+#### 1. **LangGraph Orchestration (`graph.py`)**
+
+* Defines a **stateful workflow** using `StateGraph`
+* Manages agent routing using **intent classification**
+* Connects all agents and defines **entry + finish points**
+* Handles **dynamic transitions** between nodes (multi-agent flow)
+
+---
+
+#### 2. **Natural Language Understanding (`nlu.py`)**
+
+* Uses LLM to **detect user intent** (e.g., `sql`, `email`, `general`)
+* Intent determines which agent should process the query
+* Allows **open-ended user inputs** without hardcoded rules
+
+---
+
+#### 3. **Agent Framework (`agents/`)**
+
+* Modular agents for handling specific tasks:
+
+  * `sql_agent.py`: Generates SQL views
+  * `email_agent.py`: Drafts professional emails
+  * `general_agent.py`: Uses RAG to answer questions contextually
+* Agents are **LLM-driven** and stateless (except for memory context)
+
+---
+
+#### 4. **Memory Management (`memory.py`)**
+
+* Uses **LangChain's `ConversationBufferMemory`**
+* Stores **multi-turn chat history**
+* Enables **contextual understanding** across sessions
+* Memory is passed through LangGraph as part of state
+
+---
+
+#### 5. **LLM Configuration (`llm.py`)**
+
+* Uses **Databricks Llama Maverick 4** for LLM tasks
+* Embedding model: `BGE-Large-EN` (via HuggingFace)
+* Central LLM + embedding abstraction used across system
+
+---
+
+#### 6. **Retrieval-Augmented Generation (RAG)**
+
+* **Two-part system**:
+
+  * `doc_loader.py`: Developer-controlled embedding & indexing
+  * `rag.py`: Runtime document retrieval + QA over indexed content
+* Enables **autonomous retrieval** when agent lacks answer context
+
+---
+
+#### 7. **Autonomous Knowledge Control**
+
+* Agent automatically decides whether to use RAG based on intent (via `general_agent.py`)
+* Decouples document processing (embedding) from query-time retrieval
+
+---
+
+#### 8. **Conversation Loop (`main.py`)**
+
+* Accepts user input
+* Maintains session memory
+* Triggers graph execution
+* Streams final agent response back to user
+
+---
+
+#### 9. **Extensibility**
+
+* Easily add more agents (e.g., calendar, file handling, HR support)
+* Swappable LLM backends
+* Multi-user memory support (with session keys)
+
+---
+
+Let me know if you’d like to:
+
+* Add new agent types
+* Store memory in Redis or Chroma for persistence
+* Enhance NLU with classification confidence or few-shot examples
+* Visualize the LangGraph structure for debugging and documentation
