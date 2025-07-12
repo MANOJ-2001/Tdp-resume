@@ -1,578 +1,162 @@
-# DMA Agent System — Complete Documentation
+# 📁 memory.py
+from langchain.memory import ConversationBufferMemory
+from langchain.schema import messages_from_dict, messages_to_dict
 
-This documentation describes the architecture, data flow, file structure, and precise code logic for the DMA Agent system.  
-Follow this document to reproduce the entire system from scratch, including the Streamlit UI, agent modules, RAG retrieval, LangChain memory, and configuration.
-
----
-
-## 1. **System Overview**
-
-DMA Agent is an intelligent assistant built with Streamlit and LangChain.  
-It supports multiple agent types (Knowledge Query, SQL Generation, Email Drafting, JSON Generation), uses RAG (Retrieval Augmented Generation) for context, and displays retrieved documents, relevance scores, and agent info in the UI.  
-Session memory is handled by LangChain and is unique per user session.
-
----
-
-## 2. **File Structure**
-
-- `app.py` — Streamlit UI and main entry point.
-- `llm.py` — Loads and configures the LLM object.
-- `config.py` — Contains all environment/config variables.
-- `rag.py` — Handles document retrieval from vector store.
-- `index_policies.py` — Indexes documents into the vector store.
-- `intent_router.py` — Classifies intents and routes queries to appropriate agent.
-- `handle_normal_query.py` — Knowledge Query agent.
-- `handle_sql_generation.py` — SQL Generation agent.
-- `handle_email_drafting.py` — Email Drafting agent.
-- `handle_json_generation.py` — JSON Generation agent.
-
----
-
-## 3. **Configuration File**
-
-### `config.py`
-Stores environment variables for endpoints, tokens, and index folder.
-
-```python
-import os
-
-EMBEDDING_ENDPOINT = os.getenv("EMBEDDING_ENDPOINT", "databricks-bge-large-en")
-EMBEDDING_TOKEN = os.getenv("EMBEDDING_TOKEN")
-INDEX_FOLDER = os.getenv("INDEX_FOLDER", "path/to/index_folder")
-LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "databricks-llama-4-maverick")
-LLM_TOKEN = os.getenv("LLM_TOKEN")
-```
-
----
-
-## 4. **LLM Loader**
-
-### `llm.py`
-Initializes the LLM object (e.g., Databricks Llama) using config values.
-
-```python
-import logging
-from config import LLM_ENDPOINT, LLM_TOKEN
-from databricks_langchain.chat_models import ChatDatabricks
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def get_llm():
-    logger.info("Initializing ChatDatabricks LLM with endpoint and token.")
-    llm = ChatDatabricks(
-        endpoint=LLM_ENDPOINT,
-        api_token=LLM_TOKEN
+# You can manage memory per user_id or session_id if needed
+def get_memory(session_id=None):
+    return ConversationBufferMemory(
+        return_messages=True,
+        memory_key="chat_history",
+        input_key="query"
     )
-    logger.info("LLM initialized.")
-    return llm
-```
 
----
+# For more advanced cases, you could serialize/deserialize this using:
+# messages_to_dict(memory.chat_memory.messages)
+# messages_from_dict(serialized_data)
 
-## 5. **RAG Context Retriever**
 
-### `rag.py`
-Retrieves relevant documents from the vector store using semantic embedding.
+# 📁 graph.py (updated to use memory)
+from langgraph.graph import StateGraph
+from router import route_intent
+from agents.general_agent import handle_general
+from agents.sql_agent import handle_sql
+from agents.email_agent import handle_email
+from memory import get_memory
 
-```python
-import logging
-from config import EMBEDDING_ENDPOINT, EMBEDDING_TOKEN, INDEX_FOLDER
-from langchain_community.vectorstores import FAISS
-from databricks_langchain.embeddings import DatabricksEmbeddings
+# Create workflow
+workflow = StateGraph()
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Create memory
+session_memory = get_memory()
 
-def get_relevant_context(query: str, top_k=4):
-    logger.info(f"Getting relevant context for query: '{query}'")
-    embedding = DatabricksEmbeddings(
-        endpoint=EMBEDDING_ENDPOINT,
-        api_token=EMBEDDING_TOKEN
-    )
-    logger.info("Loaded embedding model.")
-    vectorstore = FAISS.load_local(
-        INDEX_FOLDER, embedding, allow_dangerous_deserialization=True
-    )
-    logger.info("Loaded vectorstore index.")
-    retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
-    relevant_docs = retriever.invoke(query)
-    logger.info(f"Retrieved {len(relevant_docs)} relevant documents.")
-    results = []
-    for doc in relevant_docs:
-        score = doc.metadata.get('score', 1.0) if hasattr(doc, 'metadata') else 1.0
-        results.append({"content": doc.page_content, "score": score})
-    logger.info("Context extraction done.")
-    return results
-```
+# Define nodes
+workflow.add_node("nlu", route_intent)
+workflow.add_node("sql_agent", handle_sql)
+workflow.add_node("email_agent", handle_email)
+workflow.add_node("general_agent", handle_general)
 
----
+# Entry point
+workflow.set_entry_point("nlu")
 
-## 6. **Indexing Script**
+# Route from NLU based on intent
+workflow.set_conditional_edges(
+    "nlu",
+    lambda state: state.get("intent"),
+    {
+        "sql_agent": "sql_agent",
+        "email_agent": "email_agent",
+        "general_agent": "general_agent"
+    }
+)
 
-### `index_policies.py`
-Indexes policy documents into FAISS vector store.
+# Set finish points
+workflow.set_finish_point("sql_agent")
+workflow.set_finish_point("email_agent")
+workflow.set_finish_point("general_agent")
 
-```python
-import logging
-from config import EMBEDDING_ENDPOINT, EMBEDDING_TOKEN, INDEX_FOLDER
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
-from langchain_community.vectorstores import FAISS
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from databricks_langchain.embeddings import DatabricksEmbeddings
+# Compile graph
+app = workflow.compile()
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-def index_policy_documents(docs_folder):
-    logger.info(f"Indexing policy documents from folder: {docs_folder}")
-    loader = DirectoryLoader(
-        path=docs_folder,
-        glob="**/*.txt",
-        loader_cls=TextLoader
-    )
-    documents = loader.load()
-    logger.info(f"Loaded {len(documents)} documents.")
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks = splitter.split_documents(documents)
-    logger.info(f"Split documents into {len(chunks)} chunks.")
-    if not chunks:
-        logger.error("No document chunks found.")
-        raise ValueError("No document chunks found.")
-    embedding = DatabricksEmbeddings(
-        endpoint=EMBEDDING_ENDPOINT,
-        api_token=EMBEDDING_TOKEN
-    )
-    logger.info("Loaded embedding model for indexing.")
-    vectorstore = FAISS.from_documents(chunks, embedding)
-    vectorstore.save_local(INDEX_FOLDER)
-    logger.info(f"Indexed and saved to {INDEX_FOLDER}")
+# 📁 main.py (updated with memory)
+from graph import app
+from memory import get_memory
 
 if __name__ == "__main__":
-    index_policy_documents("path/to/knowledgebase")
-```
+    memory = get_memory()
 
----
+    while True:
+        query = input("You: ")
+        memory.save_context({"query": query}, {})
+        response = app.invoke({"query": query, "chat_history": memory.chat_memory.messages})
+        print("Agent:", response)
+        memory.save_context({"query": query}, {"response": response})
 
-## 7. **Intent Router**
 
-### `intent_router.py`
-Classifies user intent and routes to the correct agent.
+# 📁 nlu.py
+from llm import llm
 
-```python
-import logging
-from llm import get_llm
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def classify_intent(user_input, chat_history, llm, memory=None):
-    logger.info(f"Classifying intent for input: '{user_input}'")
-    if memory is not None:
-        history = memory.load_memory_variables({})['history']
-    else:
-        history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
+def detect_intent(query: str) -> str:
     prompt = f"""
-You are an intent classifier. Classify the user's input into one of: knowledge_query, sql_generation, email_drafting, json_generation.
-Respond with only the category name. No explanation.
-
-Chat history:
-{history}
-
-User input: {user_input}
-Intent:
-"""
-    response = llm.invoke(
-        prompt,
-        max_tokens=20,
-        temperature=0.0,
-        top_p=0.9,
-        stop=["\n", "User:", "AI:"]
-    )
-    intent = response.content.strip()
-    logger.info(f"Intent classified as: '{intent}'")
-    return intent
-
-def route_intent(user_input, chat_history, llm, memory=None):
-    intent = classify_intent(user_input, chat_history, llm, memory=memory)
-    logger.info(f"Routing to agent for intent: '{intent}'")
-    if intent == "knowledge_query":
-        from handle_normal_query import handle_normal_query
-        return handle_normal_query(user_input, chat_history, llm, memory=memory)
-    elif intent == "sql_generation":
-        from handle_sql_generation import handle_sql_generation
-        return handle_sql_generation(user_input, chat_history, llm, memory=memory)
-    elif intent == "email_drafting":
-        from handle_email_drafting import handle_email_drafting
-        return handle_email_drafting(user_input, chat_history, llm, memory=memory)
-    elif intent == "json_generation":
-        from handle_json_generation import handle_json_generation
-        return handle_json_generation(user_input, chat_history, llm, memory=memory)
-    else:
-        logger.warning("Intent not recognized. Asking user to rephrase.")
-        return {
-            "agent": "Unknown",
-            "response": "Intent not recognized. Please rephrase your query.",
-            "docs": []
-        }
-```
-
----
-
-## 8. **Agent Modules**
-
-Each agent module receives the query, chat history, LLM, and session memory.  
-All agents return a dict with:  
-- `"agent"`: agent name  
-- `"response"`: LLM answer  
-- `"docs"`: list of relevant docs (`{"content": ..., "score": ...}`)
-
-### `handle_normal_query.py`
-Knowledge Query agent.
-
-```python
-import logging
-from rag import get_relevant_context
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def handle_normal_query(user_input, chat_history, llm, memory=None, score_threshold=0.4):
-    logger.info(f"Handling knowledge query for input: '{user_input}'")
-    context_results = get_relevant_context(user_input)
-    best_score = max([doc["score"] for doc in context_results]) if context_results else 0
-    context = "\n".join([doc["content"] for doc in context_results]) if best_score >= score_threshold else ""
-    if memory is not None:
-        history_text = memory.load_memory_variables({})['history']
-    else:
-        history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
-    prompt = f"""You are a helpful assistant. Use the following chat history and context to answer the user's query.
-
-Chat history:
-{history_text}
-
-User request:
-{user_input}
-
-Relevant context:
-{context}
-
-If this is the first time the user is asking this question, do not refer to any previous questions.
-Only reference previous questions if the same question was asked earlier in the chat history.
-Otherwise, answer normally.
-"""
-    logger.info("Invoking LLM for knowledge query.")
-    response = llm.invoke(
-        prompt,
-        max_tokens=256,
-        temperature=0.7,
-        top_p=0.9,
-        stop=["\n", "User:", "AI:"]
-    )
-    logger.info("Received response from LLM.")
-    return {
-        "agent": "Knowledge Query",
-        "response": response.content.strip(),
-        "docs": context_results
-    }
-```
-
----
-
-### `handle_sql_generation.py`
-SQL Generation agent.
-
-```python
-import logging
-from rag import get_relevant_context
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def format_sql_response(response: str) -> str:
-    import re
-    logger.info("Formatting SQL response.")
-    response = re.sub(r"```sql[\s\S]*?```", lambda m: m.group(0)[6:-3], response, flags=re.IGNORECASE)
-    response = re.sub(r"```[\s\S]*?```", lambda m: m.group(0)[3:-3], response, flags=re.IGNORECASE)
-    match = re.search(r"(CREATE\s+OR\s+REPLACE\s+VIEW[\s\S]+)", response, re.IGNORECASE)
-    if match:
-        sql_script = match.group(1).strip()
-        if ";" in sql_script:
-            sql_script = sql_script[:sql_script.rfind(";")+1]
-        logger.info("SQL script extracted.")
-        return sql_script
-    else:
-        logger.info("No CREATE OR REPLACE VIEW found, returning raw response.")
-        return response.strip()
-
-def handle_sql_generation(user_input, chat_history, llm, memory=None):
-    logger.info(f"Handling SQL generation for input: '{user_input}'")
-    context_results = get_relevant_context(user_input)
-    context = "\n".join([doc["content"] for doc in context_results])
-    if memory is not None:
-        history_text = memory.load_memory_variables({})['history']
-    else:
-        history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
-    prompt = f"""You are a SQL generation assistant. Based on the user's request and the following chat history and policy context, generate an updated SQL view script.
-
-Chat history:
-{history_text}
-
-User request:
-{user_input}
-
-Policy context:
-{context}
-
-Respond ONLY with the SQL script, starting with CREATE OR REPLACE VIEW ... AS SELECT. No explanations.
-"""
-    logger.info("Invoking LLM for SQL generation.")
-    response = llm.invoke(
-        prompt,
-        max_tokens=512,
-        temperature=0.7,
-        top_p=0.9,
-        stop=["\n", "User:", "AI:"]
-    )
-    logger.info("Received response from LLM.")
-    return {
-        "agent": "SQL Generation",
-        "response": format_sql_response(response.content.strip()),
-        "docs": context_results
-    }
-```
-
----
-
-### `handle_email_drafting.py`
-Email Drafting agent.
-
-```python
-import logging
-from rag import get_relevant_context
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def handle_email_drafting(user_input, chat_history, llm, memory=None):
-    logger.info(f"Handling email drafting for input: '{user_input}'")
-    context_results = get_relevant_context(user_input)
-    context = "\n".join([doc["content"] for doc in context_results])
-    if memory is not None:
-        history_text = memory.load_memory_variables({})['history']
-    else:
-        history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
-    prompt = f"""You are an email drafting agent. Use the chat history and relevant context to draft a professional email per the user's request.
-
-Chat history:
-{history_text}
-
-User request:
-{user_input}
-
-Relevant context:
-{context}
-
-Draft the email below.
-"""
-    logger.info("Invoking LLM for email drafting.")
-    response = llm.invoke(
-        prompt,
-        max_tokens=256,
-        temperature=0.7,
-        top_p=0.9,
-        stop=["\n", "User:", "AI:"]
-    )
-    logger.info("Received response from LLM.")
-    return {
-        "agent": "Email Drafting",
-        "response": response.content.strip(),
-        "docs": context_results
-    }
-```
-
----
-
-### `handle_json_generation.py`
-JSON Generation agent.
-
-```python
-import logging
-from rag import get_relevant_context
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def handle_json_generation(user_input, chat_history, llm, memory=None):
-    logger.info(f"Handling JSON generation for input: '{user_input}'")
-    context_results = get_relevant_context(user_input)
-    context = "\n".join([doc["content"] for doc in context_results])
-    if memory is not None:
-        history_text = memory.load_memory_variables({})['history']
-    else:
-        history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
-    prompt = f"""You are a JSON generation agent. Use chat history and relevant context to generate or validate a JSON object per user's request.
-
-Chat history:
-{history_text}
-
-User request:
-{user_input}
-
-Relevant context:
-{context}
-
-Generate or validate the JSON below.
-"""
-    logger.info("Invoking LLM for JSON generation.")
-    response = llm.invoke(
-        prompt,
-        max_tokens=256,
-        temperature=0.7,
-        top_p=0.9,
-        stop=["\n", "User:", "AI:"]
-    )
-    logger.info("Received response from LLM.")
-    return {
-        "agent": "JSON Generation",
-        "response": response.content.strip(),
-        "docs": context_results
-    }
-```
-
----
-
-## 9. **Main UI**
-
-### `app.py`
-Streamlit UI, session memory, and chat display.  
-- Memory is initialized once per session.
-- Each assistant response displays: agent name, relevant docs and scores, and collapsible doc content.
-
-```python
-import streamlit as st
-import logging
-from langchain.memory import ConversationBufferMemory
-from llm import get_llm
-from intent_router import route_intent
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-st.title('🤖 DMA AGENT')
-
-if 'memory' not in st.session_state:
-    st.session_state['memory'] = ConversationBufferMemory(return_messages=True)
-    logger.info("LangChain ConversationBufferMemory initialized.")
-
-if 'messages' not in st.session_state:
-    st.session_state['messages'] = []
-    logger.info("Session state initialized with empty messages list.")
-
-st.sidebar.title('Model Parameters')
-temperature = st.sidebar.slider("Temperature", 0.0, 2.0, 0.7, 0.1)
-max_tokens = st.sidebar.slider("Max Tokens", 1, 8192, 256)
-
-llm = get_llm()
-logger.info("LLM object created.")
-
-prompt = st.chat_input("Enter your query")
-memory = st.session_state['memory']
-
-if prompt:
-    logger.info(f"Received user input: {prompt}")
-    st.session_state['messages'].append({"role": "user", "content": prompt})
-
-    memory.chat_memory.add_user_message(prompt)
-
-    result = route_intent(prompt, st.session_state['messages'], llm, memory=memory)
-    response = result["response"]
-    agent = result.get("agent", "")
-    docs = result.get("docs", [])
-
-    logger.info(f"Assistant response: {response} (Agent: {agent})")
-    st.session_state['messages'].append({"role": "assistant", "content": response, "agent": agent, "docs": docs})
-
-    memory.chat_memory.add_ai_message(response)
-
-for i, message in enumerate(st.session_state['messages']):
-    with st.chat_message(message['role']):
-        if message['role'] == "assistant":
-            agent = message.get("agent", "")
-            docs = message.get("docs", [])
-            if agent:
-                st.markdown(f"**Agent Used:** `{agent}`")
-            if docs and len(docs) > 0:
-                st.markdown("**Relevant Documents Retrieved:**")
-                for idx, doc in enumerate(docs):
-                    st.markdown(
-                        f"- **Doc {idx+1}** (Score: `{doc['score']:.3f}`):"
-                        f"\n\n<details><summary>Show document</summary>\n\n"
-                        f"{doc['content'][:1000]}{'...' if len(doc['content']) > 1000 else ''}\n\n</details>"
-                    )
-        st.markdown(message['content'])
-        if message['role'] == 'assistant':
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                st.button("👍", key=f"up_{i}")
-            with col2:
-                st.button("👎", key=f"down_{i}")
-```
-
----
-
-## 10. **How Data Flows**
-
-1. **User submits a query** in the Streamlit UI.
-2. **Memory** is updated with the user message.
-3. **Intent router** classifies the query and sends it to the appropriate agent.
-4. **Agent retrieves relevant documents** using RAG and generates a prompt.
-5. **LLM produces a response**, which is returned with agent name and docs.
-6. **UI displays** the response, agent name, and relevant docs (with scores and expandable content).
-7. **Memory** is updated with the assistant’s reply.
-
----
-
-## 11. **Session Memory**
-
-- Only **one memory object per session** in Streamlit.
-- All agent modules use this memory for context and recall.
-
----
-
-## 12. **Customizations**
-
-- Agents can be extended with more types, or custom prompts.
-- UI can adjust how documents and scores are displayed (e.g., show full text, or excerpts).
-- Vector store can be swapped for other providers.
-
----
-
-## 13. **How to Reproduce**
-
-1. **Create all files** as shown above.
-2. **Install dependencies**:  
-   - `streamlit`  
-   - `langchain`  
-   - `databricks-langchain`  
-   - `faiss-cpu`  
-   - `langchain_community`
-3. **Set environment variables** for endpoints and tokens.
-4. **Index documents** into your vector store using `index_policies.py`.
-5. **Run the Streamlit app**:  
-   ```bash
-   streamlit run app.py
-   ```
-
----
-
-## 14. **Notes**
-
-- All responses are generated using retrieved context and session memory.
-- Scores for relevant docs are shown; `1.000` means highest similarity.
-- Each agent returns: agent name, response, docs.
-- Greeting queries ("hi", "hello") should ideally be routed to a chitchat agent with no doc retrieval.
-
----
-
-This documentation can be used by an LLM or a developer to **reconstruct the entire DMA Agent system** exactly as described.
+    Classify the user intent from the following:
+    - sql
+    - email
+    - general
+    Query: {query}
+    Intent:
+    """
+    return llm.invoke(prompt).strip().lower()
+
+def route_intent(state: dict) -> dict:
+    query = state["query"]
+    intent = detect_intent(query)
+    return {**state, "intent": intent}
+
+
+# 📁 llm.py
+from langchain.llms import Databricks
+from langchain.embeddings import HuggingFaceEmbeddings
+
+llm = Databricks(
+    endpoint="https://your-databricks-endpoint",
+    api_token="your-token",
+    model="llama-maverick-4"
+)
+
+embedding_model = HuggingFaceEmbeddings(model_name="bge-large-en")
+
+
+# 📁 doc_loader.py
+from langchain.document_loaders import TextLoader
+from langchain.vectorstores import FAISS
+from llm import embedding_model
+import os
+
+def embed_and_store(doc_path, index_path="./indexes"):
+    loader = TextLoader(doc_path)
+    documents = loader.load()
+    vectordb = FAISS.from_documents(documents, embedding_model)
+    vectordb.save_local(index_path)
+    print("Documents embedded and saved.")
+
+
+# 📁 rag.py
+from langchain.vectorstores import FAISS
+from langchain.chains import RetrievalQA
+from llm import llm, embedding_model
+
+def load_index(index_path="./indexes"):
+    return FAISS.load_local(index_path, embedding_model)
+
+def get_rag_response(query):
+    db = load_index()
+    retriever = db.as_retriever()
+    qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
+    return qa_chain.run(query)
+
+
+# 📁 agents/general_agent.py
+from rag import get_rag_response
+
+def handle_general(state: dict) -> str:
+    query = state["query"]
+    response = get_rag_response(query)
+    return response
+
+
+# 📁 agents/sql_agent.py
+from llm import llm
+
+def handle_sql(state: dict) -> str:
+    query = state["query"]
+    prompt = f"You are a SQL view generator. Based on this request, create SQL: {query}"
+    return llm.invoke(prompt)
+
+
+# 📁 agents/email_agent.py
+from llm import llm
+
+def handle_email(state: dict) -> str:
+    query = state["query"]
+    prompt = f"You are an email assistant. Draft a professional email for: {query}"
+    return llm.invoke(prompt)
