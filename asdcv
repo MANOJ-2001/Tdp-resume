@@ -1,309 +1,79 @@
-// Databricks notebook source
-dbutils.widgets.text("view_schema_names", "", "View_Schema Names (comma-separated list)")
-dbutils.widgets.text("ENV", "Delta", "ENV (comma-separated list)")
-dbutils.widgets.text("table_schema_name", "orx_idw_dm_prd", "Table Schema Name")
-dbutils.widgets.text("table_name", "", "Table Name")
-dbutils.widgets.dropdown("Flg", "N", Seq("N", "Y"), "Existing view Flg") //NEW --> "N"; Existing --> "Y"
-dbutils.widgets.text("additional_columns", "", "Additional Columns (comma-separated list)")
-
-// COMMAND ----------
-
-// Import required Spark functions
-import org.apache.spark.sql.functions._
-
-// COMMAND ----------
-
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.DataFrame
-
-val data = Seq(
-  ("NONUS_UHC", "ORX_IDW_DM_SEC_PRD.UHC_NONUS_ROLE_CAG_MASK", "CAG_SK", "WHERE ( (EXISTS", "-"),
-  ("NONUS_INTR", "ORX_IDW_DM_PRD.INTRL_NONUS_USER_HRCHY_CAG_DENY", "CAG_SK", "WHERE (NOT (EXISTS", "IO"),
-  ("ONSH_UHC", "ORX_IDW_DM_PRD.OFFSHR_USER_HRCHY_ALLOW", "CARRIER_SK", "WHERE ( (EXISTS", "-"),
-  ("OFSH_UHC", "ORX_IDW_DM_PRD.OFFSHR_USER_HRCHY_ALLOW", "CAG_SK", "WHERE ( (EXISTS", "-"),
-  ("OFSH_INTR", "ORX_IDW_DM_PRD.OFFSHR_USER_HRCHY_DENY", "CAG_SK", "WHERE (NOT (EXISTS", "-"),
-  ("EXTR", "ORX_IDW_DM_PRD.EXTR_USER_HRCHY_ALLOW", "CAG_SK", "WHERE (EXISTS", "-"),
-  ("OFSH", "OFFSHR_RESTRCTN_CAGS", "CAG_SK", "WHERE (NOT (EXISTS", "-"),
-  ("UHC_INTR", "ORX_IDW_DM_SEC_PRD.UHC_ROLE_CARRIER_MASK", "CARRIER_SK", "WHERE (EXISTS", "-"),
-  ("UHC_INTR", "ORX_IDW_DM_SEC_PRD.UHC_ROLE_CAG_MASK", "CAG_SK", "WHERE (EXISTS", "-"),
-  ("INTR", "ORX_IDW_DM_PRD.INTRL_USER_HRCHY_CARRIER_DENY", "CARRIER_SK", "WHERE (NOT (EXISTS", "I"),
-  ("INTR", "ORX_IDW_DM_PRD.INTRL_USER_HRCHY_DENY", "CAG_SK", "WHERE (NOT (EXISTS", "I"),
-)
-
-val df_sec = data.toDF("DbSchema", "SecurityTableName", "ColumnUsedForSecurity", "FilterCriteria", "USR_CLSS_CD")
-
-// df.coalesce(1).write.mode("overwrite").json("/mnt/local/temp/sk/output.json")
-
-// COMMAND ----------
-
-val phi_1 = Set("med_member_id", "wait_claim_id", "user_id", "uid", "surveyversionappidpatientid", "rxclaim_num", "rxclaim_nbr", "rxclaim_member_id", "rx_clm_nbr", "phrmcy_claim_id", "phr_claim_id", "patientid", "patient_no", "patient_id_num", "patient_id", "part_d_mbr_id", "part_d_claim_nbr", "orig_member_id", "orig_mbr_id", "orig_clm_id", "mstr_indv_id", "memid", "member_id", "medical_claim_id", "mbr_member_id", "group_member_id", "patient_medical_member_id", "orig_patient_medical_member_id", "mbr_id", "mbr_alt_ins_mbr_id", "mbr_familyid", "mbr_family_id_ra14", "mbr_crdhldr_id", "mbr_cd", "mbr_alt_ins_mbr_id", "mbi", "mbe_partd_clm_nbr", "mbe_m3p_clm_nbr", "m3p_mbr_id", "m3p_clm_nbr", "m3p_claim_nbr", "lje_partd_clm_nbr", "lje_m3p_clm_nbr", "invoice_nbr", "indvdl_id", "individual_id", "form_dtl_mbi", "fam_id", "emplyr_grp_cd", "discnt_card_chid", "cust_id_alt", "cust_claim_no", "crdhldr_id", "clm_id", "client_id", "claim_no", "claim_nbr", "tertiary_claim_nbr", "quintinary_claim_nbr", "quatrinary_claim_nbr", "primary_claim_nbr", "secondary_claim_nbr", "claim_id", "card_holder_id", "bill_id", "appidpatientid", "fk_mbr_id", "curr_mbi_id", "old_mbi_id", "mbi_rec_old_mbi_id")
-val phi_2 = Set("zip_to", "brth_dt", "zip_from", "zip_code", "zip_cd", "zip_5", "zip_4", "zip", "work_phone", "user_name", "translated_customer_name", "crdhldr_mbr_last_nm", "crdhldr_mbr_first_nm", "to_address", "to_account_number", "tel_no", "subscriber_key", "subscriber_id", "std_zip", "std_city", "std_adr_123", "state", "st_cd", "st", "shipto_zip", "shipto_phone2", "shipto_phone", "shipto_middle_initial", "shipto_last_name", "shipto_first_name", "shipto_city", "shipto_address3", "shipto_address2", "shipto_address1", "ship_to_zip4_cd", "ship_to_zip", "ship_to_name", "ship_to_cust_id", "ship_to_city", "ship_to_adr2", "ship_to_adr1", "ship_to_addr_line", "ship_frm_zip", "ship_frm_phone", "ship_frm_name", "ship_frm_city", "ship_frm_addr_line", "sbm_patient_st_cd", "sbm_patient_smoker_ind", "sbm_patient_pregnancy_ind", "sbm_patient_phone", "sbm_patient_id_qlfr", "sbm_patient_id", "sbm_patient_employer_id", "sbm_patient_eml_addr", "sbm_patient_addr", "sbm_future_use_sts", "rx_number", "rx_nbr", "return_zip", "return_phone", "return_middle_name", "return_last_name", "return_first_name", "return_city", "return_bus_name", "return_addr_line2", "return_addr_line1", "remittance_zip", "remittance_phone", "remittance_middle_name", "remittance_last_name", "remittance_first_name", "remittance_city", "remittance_addr_line2", "remittance_addr_line1", "recipientstate", "recipientcity", "recipientaddress2", "recipientaddress", "receipient_zip", "receipient_st", "receipient_city", "receipient_adr_2", "receipient_adr", "rcpnt_lst_nm", "rcpnt_fst_nm", "rcpnt_email_adr", "ptnt_last_nm", "ptnt_first_nm", "province", "primary_phone_number", "prim_ship_zip4_cd", "prim_ship_city", "prim_ship_adr2", "prim_ship_adr1", "prim_phone_nbr", "prim_bil_zip4_cd", "prim_bil_city", "prim_bil_adr2", "prim_bil_adr1", "postal_code", "plninfo_zip_cd", "plninfo_st_cd", "plninfo_phn_nbr", "plninfo_city_nm", "plninfo_adr_2", "plninfo_adr_1", "phone_number", "phone_num", "phone_nbr", "phone_alt", "phone", "person_previous_last_name", "person_name", "person_middle_name", "person_last_name", "person_first_name", "patient_zipcode", "patient_zip", "patient_tel_no", "patient_state", "patient_postal_code", "patient_phone", "patient_midl_nm", "patient_middle_initial", "patient_lst_nm", "patient_last_nm", "patient_last_name", "patient_fst_nm", "patient_first_nm", "patient_first_name", "patient_email_adr", "patient_email_addr", "patient_email", "patient_dt_of_brth", "patient_dob_alt", "patient_dob", "patient_date_of_birth", "patient_city", "sbm_patient_zip", "sbm_patient_city", "patient_age", "patient_address2", "patient_address1", "patient_acct_num", "patient_acct_id", "patient_account_num", "patient_account_id", "outbound_email_recipient", "outbound_email_cc", "name", "midl_init_nm", "middlename", "middle_name", "memberdob", "member_phone_no", "member_name", "member_hicn", "member_address", "mbr_zip4", "mbr_zip2", "mbr_zip", "mbr_tel", "mbr_st_cd", "mbr_sex", "mbr_relshp_cd", "mbr_prsn_cd", "mbr_phone", "mbr_nm", "mbr_midl_init", "mbr_mid_init_nm", "mbr_lst_nm", "mbr_lastname", "mbr_last_nm", "mbr_hic_cd", "mbr_fst_nm", "mbr_firstname", "mbr_first_nm", "mbr_fam_id", "mbr_eml_addr", "mbr_email_adr", "mbr_dt_of_brth", "mbr_dob", "mbr_date_of_birth", "mbr_city_nm", "mbr_cdhldr", "mbr_calc_age", "mbr_alt_email_adr", "mbr_alt_adr_2_line", "mbr_alt_adr_1_line", "mbr_age", "mbr_adr2", "mbr_adr1", "mbr_adr_2_line", "mbr_adr_1_line", "mbr_addr3", "mbr_addr2", "mbr_addr1", "mb_mid_init_nm", "mb_last_nm", "mb_first_nm", "martech_remit_zip_cd", "martech_remit_st_cd", "martech_remit_city_nm", "martech_remit_adr_2", "martech_remit_adr_1", "mail_to_name_2", "mail_to_name_1", "mail_to_citystzip", "mail_to_addr_3", "mail_to_addr_2", "mail_to_addr_1", "lst_nm", "lst_alt_nm", "line_nbr", "lastname", "last_name", "init", "indv_midl_nm", "indv_midl_init", "indv_last_nm", "indv_first_nm", "indv_dt_of_brth", "indv_brth_st", "indv_brth_cntry_nm", "indv_brth_city_nm", "home_phone", "hicn", "hic_nbr", "fst_nm", "fst_alt_nm", "from_account_number", "form_dtl_mbr_prmnt_mailg_adr_zip_cd", "form_dtl_mbr_prmnt_mailg_adr_street_adr", "form_dtl_mbr_prmnt_mailg_adr_st", "form_dtl_mbr_prmnt_mailg_adr_city", "form_dtl_mbr_phn_nbr", "form_dtl_mbr_midl_nm", "form_dtl_mbr_lst_nm", "form_dtl_mbr_fst_nm", "form_dtl_mbr_email_adr", "form_dtl_mbr_dob", "form_dtl_mbr_curr_mailg_adr_zip_cd", "form_dtl_mbr_curr_mailg_adr_street_adr", "form_dtl_mbr_curr_mailg_adr_st", "form_dtl_mbr_curr_mailg_adr_city", "form_dtl_care_giver_dtl_nm", "form_dtl_care_giver_dtl_adr_zip_cd", "form_dtl_care_giver_dtl_adr_street_adr", "form_dtl_care_giver_dtl_adr_st", "form_dtl_care_giver_dtl_adr_city", "firstname", "first_name", "fax_no", "extn_nbr", "ext_cust_id", "email2", "email1", "email_id", "email_address", "email", "dt_of_birth", "donor_middle_name", "donor_last_name", "donor_first_name", "dob", "dateofbirth", "date_of_birth", "customer_num", "customer_id", "cust_zip", "cust_phone", "cust_name", "cust_middle_initial", "cust_last_name", "cust_id", "cust_first_name", "cust_email", "cust_city", "cust_address3", "cust_address2", "cust_address1", "cust_acct_id", "cust_account_id", "cs_phone_no", "crdhldr_mbr_dt_of_brth", "country", "contact_phone", "contact_person", "contact_num", "contact_name", "contact_fax", "cntry", "city_nm", "city_2_nm", "city_1_nm", "city", "cell_number", "cardholder_id", "card_holder_lst_nm", "card_holder_fst_nm", "birth_dt", "billto", "bill_to_zip", "bill_to_middle_name", "bill_to_last_name", "bill_to_first_name", "bill_to_city", "bill_to_bus_name", "bill_to_addr2", "bill_to_addr1", "bank_account_num", "bank_account_name", "auth_name", "approved_by", "alt_zip_cd", "alt_age", "alt_account_number", "adr_line3", "adr_line2", "adr_line1", "adr_line_3", "adr_line_2", "adr_line_1", "address4", "address3", "address2", "address1", "address_text", "address_lines_alt", "address_line4", "address_line3", "address_line2", "address_line1", "addr_line5", "addr_line4", "addr_line3", "addr_line2", "addr_line1", "addr_2", "addr_1", "addl_phone", "ach_acc_holder_name", "account_number", "account_no", "account", "insured_dob", "indv_dt_of_death","policy_nbr", "pbr_st_lic_no", "pbr_lic_no", "msi_suppl_id", "med_recpt_nbr", "longitude", "latitude", "indv_prfx","emp_mbr_id")
-val phi_3 = Set("ssn", "mbr_ssn_nbr", "sbm_patient_ssn_nbr", "patient_ssn", "insured_ssn", "emp_ssn")
-
-val phi_mapping = (phi_1.map(_ -> "1") ++ phi_2.map(_ -> "2") ++ phi_3.map(_ -> "3")).toMap
-
-// COMMAND ----------
-
-// MAGIC %md
-// MAGIC - check with view defination instead of table structure
-// MAGIC - change if cag_sk is not there then take carrier,account and group
-// MAGIC - create a mapping for table-view schemas
-// MAGIC - if any masked columns are NK's then we have to implement hash keys
-
-// COMMAND ----------
-
-object PHIQueryGenerator {
-  case class Column(name: String, dataType: String)
-
-  val phiLevels = phi_mapping.map { case (k, v) => k.toLowerCase -> s"PHI$v" }
-
-  lazy val columnDataTypes: Map[String, String] = {
-    val schemaName = dbutils.widgets.get("table_schema_name")
-    val tableName = dbutils.widgets.get("table_name").toLowerCase
-    val describeDf = spark.sql(s"DESCRIBE ${schemaName}.${tableName}")
-    describeDf
-      .select("col_name", "data_type")
-      .as[(String, String)]
-      .collect()
-      .map { case (col, dtype) => col.trim.toLowerCase -> dtype.trim.toLowerCase }
-      .toMap
-  }
-
-  def determineDataType(column: String): String = {
-    columnDataTypes.getOrElse(column.trim.toLowerCase, "string")
-  }
-
-  def sanitizeColumnName(column: String): String = {
-    column.trim.replaceAll("[^a-zA-Z0-9_]", "").toUpperCase
-  }
-
-  def generateQuery(column: String, phiLevel: String, dataType: String, isOfsh: Boolean): String = {
-    val accessLevel = phiLevel.replace("PHI", "").toInt
-    val safeColumn = sanitizeColumnName(column)
-    val phiValue = dataType.toLowerCase match {
-      case "date" => "'1900-01-01'"
-      case "timestamp" => "'1900-01-01 00:00:00'"
-      case "int" | "bigint" | "smallint" => "'0'"
-      case _ => "'XXXXXXXXXX'"
-    }
-    val icmCondition = if (isOfsh) " AND (ICM.CAG_SK IS NULL)" else ""
-
-    s"""CASE 
-    WHEN ((H.HA_CAG_FLG IS NULL) AND (U.PHI_ACCESS_LVL > $accessLevel)$icmCondition)
-      THEN A.$safeColumn
-    WHEN ((H.HA_CAG_FLG = 'Y') AND (U.HA_ACCESS_LVL > $accessLevel)$icmCondition)
-      THEN A.$safeColumn
-    ELSE $phiValue
-  END AS $safeColumn,"""
-  }
-
-  def getDefaultValue(dataType: String): String = {
-    dataType.toLowerCase match {
-      case "date"                           => "'1900-01-01'"
-      case "timestamp"                      => "'1900-01-01 00:00:00'"
-      case "int" | "bigint" | "smallint"    => "0"
-      case _                                => "'XXXXXXXXXX'"
-    }
-  }
-
-  def isPhiColumn(column: Column): Boolean = {
-    phiLevels.keys.exists(key => column.name.toLowerCase == key)
-  }
-
-  // Helper for OFSH join logic as per user rules
-  def getOffshJoinOrFallback(
-      columns: Seq[String],
-      schemaName: String,
-      tableName: String,
-      userFunction: String,
-      usrClassCd: String
-  ): Option[String] = {
-    val hasCagSk = columns.exists(_.trim.equalsIgnoreCase("CAG_SK"))
-    val offshJoinCols = Seq("CARRIER_ID", "ACCOUNT_ID", "EMPLOYER_GROUP_ID")
-    val hasAllOtherCols = offshJoinCols.forall(col => columns.exists(_.trim.equalsIgnoreCase(col)))
-    if (hasCagSk) {
-      // Just use CAG_SK join
-      Some(s"LEFT JOIN ORX_IDW_DM_PRD.OFFSHR_RESTRCTN_CAGS ICM ON (A.CAG_SK = ICM.CAG_SK))")
-    } else if (hasAllOtherCols) {
-      // Join on all three columns
-      val joinConds = offshJoinCols.map(c => s"A.${c} = ICM.${c}").mkString(" AND ")
-      Some(s"LEFT JOIN ORX_IDW_DM_PRD.OFFSHR_RESTRCTN_CAGS ICM ON ($joinConds))")
-    } else {
-      // Fallback: no join, return None to be handled in securityLogic
-      None
-    }
-  }
-
-  // Helper for HOUSE_ACCT_CAGS join logic as per ofsh/cag_sk rule
-  def getHouseAcctCagsJoin(columns: Seq[String], isOfsh: Boolean): String = {
-    val hasCagSk = columns.exists(_.trim.equalsIgnoreCase("CAG_SK"))
-    if (isOfsh && !hasCagSk) {
-      "LEFT JOIN ORX_IDW_DM_SEC_PRD.HOUSE_ACCT_CAGS H ON (A.CARRIER_ID = H.CARRIER_ID AND A.ACCOUNT_ID = H.ACCOUNT_ID AND A.EMPLOYER_GROUP_ID = H.EMPLOYER_GROUP_ID)"
-    } else {
-      "LEFT JOIN ORX_IDW_DM_SEC_PRD.HOUSE_ACCT_CAGS H ON (A.CAG_SK = H.CAG_SK)"
-    }
-  }
-
-  def main(args: Array[String]): Unit = {
-    val schemaName = dbutils.widgets.get("table_schema_name")
-    val tableName = dbutils.widgets.get("table_name").toLowerCase
-    val Flg = dbutils.widgets.get("Flg")
-    val envs = dbutils.widgets.get("ENV").toLowerCase.split(",").map(_.trim)
-    val userFunctions = envs.map {
-      case "synapse" => "SESSION_USER()"
-      case "snowflake" => "CURRENT_USER"
-      case _ => "CURRENT_USER()"
-    }
-
-    val givenViewSchemas = dbutils.widgets.get("view_schema_names").split(",").map(_.trim).toSeq
-    val filteredViewSchemas = envs.map { env =>
-      if (env == "delta") givenViewSchemas.filterNot(_.contains("extr")) else givenViewSchemas
-    }
-
-    val df = df_sec
-    import org.apache.spark.sql.DataFrame
-    import spark.implicits._
-
-    val additionalColumnsRaw = dbutils.widgets.get("additional_columns")
-    val additionalColumns = additionalColumnsRaw.split(",").map(_.trim).filter(_.nonEmpty)
-    val additionalColumnsWithTypes = additionalColumns.map { col =>
-      val parts = col.split(" ")
-      if (parts.length == 2) (parts(0).toUpperCase, parts(1).toLowerCase) else (col.toUpperCase, "string")
-    }
-
-
-    val columns =
-      if (Flg == "Y" && additionalColumns.isEmpty) {
-        spark.sql(s"DESCRIBE ${schemaName}.${tableName}")
-          .select("col_name").as[String].collect().map(_.toUpperCase)
-      } else if (Flg == "Y") {
-        spark.sql(s"DESCRIBE ${schemaName}.${tableName}")
-          .select("col_name").as[String].collect().map(_.toUpperCase) ++ additionalColumnsWithTypes.map(_._1)
-      } else {
-        additionalColumnsWithTypes.map(_._1)
-      }
-
-    val hasPhiColumns = columns.map(_.trim.toLowerCase).exists(phiLevels.contains)
-    val hasSecurityColumns = columns.exists(col => Set("CAG_SK", "CARRIER_SK", "CARRIER_ID").contains(col))
-    val noSecurityColumns = !columns.exists(col => Set("CAG_SK", "CARRIER_SK", "CARRIER_ID").contains(col))
-
-    val filteredDf = df.filter { row =>
-      val dbSchema = row.getString(row.fieldIndex("DbSchema")).toLowerCase
-      filteredViewSchemas.flatten.exists(_.toLowerCase.contains(dbSchema))
-    }.withColumn(
-      "ColumnUsedForSecurity",
-      when(lower(col("DbSchema")).isin("uhc_intr", "intr", "onsh"),
-        when(array_contains(lit(columns.toSeq), "CARRIER_SK"), lit("CARRIER_SK"))
-          .when(array_contains(lit(columns.toSeq), "CAG_SK"), lit("CAG_SK"))
-          .when(array_contains(lit(columns.toSeq), "CARRIER_ID"), lit("CARRIER_ID"))
-      ).otherwise(
-        when(array_contains(lit(columns.toSeq), "CAG_SK"), lit("CAG_SK"))
-          .when(array_contains(lit(columns.toSeq), "CARRIER_SK"), lit("CARRIER_SK"))
-          .when(array_contains(lit(columns.toSeq), "CARRIER_ID"), lit("CARRIER_ID"))
-      )
+# Create the graph with all nodes and edges
+def create_agent_graph():
+    workflow = StateGraph(AgentState)
+    
+    # Add nodes
+    workflow.add_node("nlu_router", nlu_intent_router)
+    workflow.add_node("general_agent", general_agent)
+    workflow.add_node("utilities_agent", utilities_agent)
+    workflow.add_node("tools_agent", tools_agent)
+    workflow.add_node("agentic_rag", agentic_rag)
+    workflow.add_node("rag_router", rag_router)
+    workflow.add_node("chatbot", chatbot)
+    
+    # Define edges
+    # Start with NLU router
+    workflow.set_entry_point("nlu_router")
+    
+    # NLU routes to appropriate agent (mandatory)
+    workflow.add_conditional_edges(
+        "nlu_router",
+        lambda x: x,
+        {
+            "general_agent": "general_agent",
+            "utilities_agent": "utilities_agent",
+            "tools_agent": "tools_agent",
+        }
     )
-
-    envs.zip(userFunctions).foreach { case (env, userFunction) =>
-      val envFilteredViewSchemas = if (env == "delta") givenViewSchemas.filterNot(_.contains("extr")) else givenViewSchemas
-
-      val securityConditions = envFilteredViewSchemas.map { v_schema =>
-        val matchingRow = filteredDf.filter { row =>
-          val dbSchema = row.getString(row.fieldIndex("DbSchema")).toLowerCase
-          v_schema.toLowerCase.contains(dbSchema)
-        }.collect().headOption
-
-        matchingRow.map { row =>
-          val filterCriteria = row.getString(row.fieldIndex("FilterCriteria"))
-          val securityTableName = row.getString(row.fieldIndex("SecurityTableName"))
-          val usrClassCd = row.getString(row.fieldIndex("USR_CLSS_CD"))
-          val columnUsedForSecurity = row.getString(row.fieldIndex("ColumnUsedForSecurity"))
-          val excludedSchemas = Set("ofsh", "nonus", "onsh", "extr")
-
-          val isOfsh = v_schema.toLowerCase.contains("ofsh")
-
-          // Use new logic for ofsh join
-          val ofshJoinOpt =
-            if (isOfsh)
-              getOffshJoinOrFallback(columns, schemaName, tableName, userFunction, usrClassCd)
-            else None
-
-          val securityLogic = if (
-            v_schema.toLowerCase.contains("uhc_intr") &&
-            Set("CARRIER_SK", "CARRIER_ID").contains(columnUsedForSecurity)
-          ) {
-            "orx_idw_dm_sec_prd.UHC_ROLE_CARRIER_MASK"
-          } else if (
-            v_schema.toLowerCase.contains("intr") &&
-            !excludedSchemas.exists(ex => v_schema.toLowerCase.contains(ex)) &&
-            Set("CARRIER_SK", "CARRIER_ID").contains(columnUsedForSecurity)
-          ) {
-            "orx_idw_dm_prd.INTRL_USER_HRCHY_CARRIER_DENY"
-          } else {
-            securityTableName
-          }
-
-          if (isOfsh && ofshJoinOpt.isEmpty) {
-            // Fallback: no join, use existing condition as per user request
-            s"""FROM (${schemaName}.${tableName} A
-JOIN ORX_IDW_DM_SEC_PRD.D_USER U ON ((U.EMAIL_ADDR) = $userFunction)${if (usrClassCd != "-") s" AND (U.USR_CLASS_CD = '$usrClassCd')" else ""}"""
-          } else if (hasPhiColumns && columnUsedForSecurity != null) {
-            s"""
-FROM ((${schemaName}.${tableName} A
-${getHouseAcctCagsJoin(columns, isOfsh)}
-JOIN ORX_IDW_DM_SEC_PRD.D_USER U ON ((((U.EMAIL_ADDR) = $userFunction) ${if (v_schema.toLowerCase.contains("uhc_intr")) ")" else ""} ${if (usrClassCd != "-") s"AND (U.USR_CLASS_CD = '$usrClassCd'))" else ""}))
-${ofshJoinOpt.getOrElse("")}$filterCriteria (SELECT 1 FROM $securityLogic B WHERE ${if (v_schema.toLowerCase.contains("uhc_intr") || v_schema.toLowerCase.contains("nonus")) "B.BUSS_ROLE_ID = U.BUSS_ROLE_ID AND " else ""}(B.${Option(columnUsedForSecurity).getOrElse(throw new IllegalArgumentException("SECURITY LOGIC CANNOT BE IMPLEMENTED"))} = A.${Option(columnUsedForSecurity).getOrElse(throw new IllegalArgumentException("SECURITY LOGIC CANNOT BE IMPLEMENTED"))})${if (filterCriteria.contains("NOT")) "))" else "))"});"""
-          } else if (hasSecurityColumns && columnUsedForSecurity != null) {
-            s"""
-FROM ((${schemaName}.${tableName} A
-$filterCriteria (SELECT 1 FROM $securityLogic B WHERE ${if (v_schema.toLowerCase.contains("uhc_intr") || v_schema.toLowerCase.contains("nonus")) "B.BUSS_ROLE_ID = U.BUSS_ROLE_ID AND " else ""}(B.${Option(columnUsedForSecurity).getOrElse(throw new IllegalArgumentException("SECURITY LOGIC CANNOT BE IMPLEMENTED"))} = A.${Option(columnUsedForSecurity).getOrElse(throw new IllegalArgumentException("SECURITY LOGIC CANNOT BE IMPLEMENTED"))})${if (filterCriteria.contains("NOT")) "))" else "))))"});"""
-          } else if (hasPhiColumns && columnUsedForSecurity == null) {
-            s"""
-FROM (${schemaName}.${tableName} A
-JOIN ORX_IDW_DM_SEC_PRD.D_USER U ON ((U.EMAIL_ADDR) = $userFunction) ${if (usrClassCd != "-") s"AND (U.USR_CLASS_CD = '$usrClassCd')" else ""});"""
-          } else {
-            s"\nFROM ${schemaName}.${tableName} A;"
-          }
-        }.getOrElse {
-          throw new IllegalArgumentException(s"No matching security config found for schema: $v_schema")
+    
+    # Each agent conditionally uses RAG
+    workflow.add_conditional_edges(
+        "general_agent",
+        should_use_rag,
+        {
+            "agentic_rag": "agentic_rag",
+            "chatbot": "chatbot"
         }
-      }
-
-      println(s"${env.toUpperCase}:")
-      envFilteredViewSchemas.zip(securityConditions).foreach { case (viewSchema, securityCondition) =>
-        val adjustedModeWithView = (env, dbutils.widgets.get("Flg")) match {
-          case ("synapse", "Y") => s"ALTER VIEW $viewSchema.V_$tableName AS SELECT \n"
-          case ("synapse", _) => s"CREATE VIEW $viewSchema.V_$tableName AS SELECT \n"
-          case ("snowflake" | "delta", _) => s"CREATE OR REPLACE VIEW $viewSchema.V_$tableName AS SELECT \n"
+    )
+    
+    workflow.add_conditional_edges(
+        "utilities_agent",
+        should_use_rag,
+        {
+            "agentic_rag": "agentic_rag",
+            "chatbot": "chatbot"
         }
+    )
+    
+    workflow.add_conditional_edges(
+        "tools_agent",
+        should_use_rag,
+        {
+            "agentic_rag": "agentic_rag",
+            "chatbot": "chatbot"
+        }
+    )
+    
+    # After RAG, route back to the appropriate agent (mandatory)
+    workflow.add_edge("agentic_rag", "rag_router")
+    
+    workflow.add_conditional_edges(
+        "rag_router",
+        lambda x: x["current_agent"],
+        {
+            "general_agent": "general_agent",
+            "utilities_agent": "utilities_agent",
+            "tools_agent": "tools_agent",
+        }
+    )
+    
+    # All agents send to chatbot (mandatory)
+    # Note: We've already added edges from agents to chatbot in the conditional RAG logic
+    
+    # Chatbot sends to end (mandatory)
+    workflow.add_edge("chatbot", END)
+    
+    return workflow.compile()
 
-        val isOfsh = viewSchema.toLowerCase.contains("ofsh")
-
-        val output =
-          adjustedModeWithView + columns.map { column =>
-            val normalizedColumn = column.replaceAll(" ", "_").toLowerCase
-            val dataType = additionalColumnsWithTypes.toMap.getOrElse(column, determineDataType(column))
-            val isPhi = phiLevels.contains(normalizedColumn)
-
-
-             if (isOfsh && !columns.exists(_.trim.equalsIgnoreCase("CAG_SK"))) {
-              s"${getDefaultValue(dataType)} AS ${sanitizeColumnName(column)},"
-            } 
-             else if (isPhi && isOfsh) {
-              generateQuery(column, phiLevels(normalizedColumn), dataType, isOfsh)
-            } else if (isPhi && !isOfsh) {
-              generateQuery(column, phiLevels(normalizedColumn), dataType, isOfsh)
-            } 
-             else {
-              s"A.${column.toUpperCase},"
-            }
-          }.mkString("\n").stripSuffix(",") + securityCondition
-
-        println(output.toLowerCase + "\n")
-      }
-    }
-  }
-}
-
-// COMMAND ----------
-
-PHIQueryGenerator.main(Array())
+# Create the agent graph
+agent_graph = create_agent_graph()
