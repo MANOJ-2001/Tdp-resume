@@ -1,79 +1,415 @@
-# Create the graph with all nodes and edges
-def create_agent_graph():
-    workflow = StateGraph(AgentState)
-    
-    # Add nodes
-    workflow.add_node("nlu_router", nlu_intent_router)
-    workflow.add_node("general_agent", general_agent)
-    workflow.add_node("utilities_agent", utilities_agent)
-    workflow.add_node("tools_agent", tools_agent)
-    workflow.add_node("agentic_rag", agentic_rag)
-    workflow.add_node("rag_router", rag_router)
-    workflow.add_node("chatbot", chatbot)
-    
-    # Define edges
-    # Start with NLU router
-    workflow.set_entry_point("nlu_router")
-    
-    # NLU routes to appropriate agent (mandatory)
-    workflow.add_conditional_edges(
-        "nlu_router",
-        lambda x: x,
-        {
-            "general_agent": "general_agent",
-            "utilities_agent": "utilities_agent",
-            "tools_agent": "tools_agent",
-        }
-    )
-    
-    # Each agent conditionally uses RAG
-    workflow.add_conditional_edges(
-        "general_agent",
-        should_use_rag,
-        {
-            "agentic_rag": "agentic_rag",
-            "chatbot": "chatbot"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "utilities_agent",
-        should_use_rag,
-        {
-            "agentic_rag": "agentic_rag",
-            "chatbot": "chatbot"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "tools_agent",
-        should_use_rag,
-        {
-            "agentic_rag": "agentic_rag",
-            "chatbot": "chatbot"
-        }
-    )
-    
-    # After RAG, route back to the appropriate agent (mandatory)
-    workflow.add_edge("agentic_rag", "rag_router")
-    
-    workflow.add_conditional_edges(
-        "rag_router",
-        lambda x: x["current_agent"],
-        {
-            "general_agent": "general_agent",
-            "utilities_agent": "utilities_agent",
-            "tools_agent": "tools_agent",
-        }
-    )
-    
-    # All agents send to chatbot (mandatory)
-    # Note: We've already added edges from agents to chatbot in the conditional RAG logic
-    
-    # Chatbot sends to end (mandatory)
-    workflow.add_edge("chatbot", END)
-    
-    return workflow.compile()
+import streamlit as st
+import uuid
+from datetime import datetime, timedelta
+import json
+import pandas as pd
+import networkx as nx
+import matplotlib.pyplot as plt
+from io import BytesIO
 
-# Create the agent graph
-agent_graph = create_agent_graph()
+# Import our modules
+from langgraph_dact_agent import initialize_session, process_user_action
+from storage import get_conversation_history, load_state, get_session_registry, log_conversation
+from utils import get_current_iso_timestamp
+
+# Set page config
+st.set_page_config(
+    page_title="SQL View Deployment Assistant",
+    page_icon="🛠️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Add custom CSS
+st.markdown("""
+<style>
+    .main {
+        padding-top: 2rem;
+    }
+    .stButton button {
+        width: 100%;
+    }
+    .chat-message {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+    }
+    .chat-message.human {
+        background-color: #f0f2f6;
+    }
+    .chat-message.ai {
+        background-color: #e3f2fd;
+    }
+    .chat-message .timestamp {
+        font-size: 0.8rem;
+        color: #888;
+        margin-bottom: 0.5rem;
+    }
+    .chat-message .content {
+        margin-top: 0.5rem;
+    }
+    .sql-code {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        overflow-x: auto;
+        font-family: monospace;
+        white-space: pre-wrap;
+    }
+    .workflow-status {
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+        background-color: #4caf50;
+        color: white;
+        text-align: center;
+    }
+    .awaiting-input {
+        background-color: #ff9800;
+        color: white;
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        margin-top: 1rem;
+        text-align: center;
+        font-weight: bold;
+    }
+    .graph-container {
+        border: 1px solid #ddd;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        background-color: white;
+    }
+    .step-active {
+        fill: green !important;
+    }
+    .step-completed {
+        fill: blue !important;
+    }
+    .step-pending {
+        fill: lightgray !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Initialize session state
+if "session_id" not in st.session_state:
+    st.session_state.session_id = None
+if "conversation" not in st.session_state:
+    st.session_state.conversation = []
+if "show_sql" not in st.session_state:
+    st.session_state.show_sql = False
+if "current_state" not in st.session_state:
+    st.session_state.current_state = None
+if "session_initialized" not in st.session_state:
+    st.session_state.session_initialized = False
+
+def render_workflow_graph(state):
+    """Render the workflow graph visualization based on the provided flow diagram"""
+    try:
+        # Create a directed graph
+        G = nx.DiGraph()
+        
+        # Define all nodes based on the flow diagram
+        nodes = [
+            "Human User", "CheckCatalog", "Get all required inputs", "AskModification",
+            "Generate SQL View", "Modify the SQL", "GenerateMail", "CreateCR",
+            "RaisePR", "ScheduleDACT", "END"
+        ]
+        
+        # Add nodes to graph
+        for node in nodes:
+            G.add_node(node)
+        
+        # Add edges based on the flow diagram
+        G.add_edge("Human User", "CheckCatalog")
+        G.add_edge("CheckCatalog", "Get all required inputs")  # view doesn't exist
+        G.add_edge("CheckCatalog", "AskModification")  # view exists
+        G.add_edge("Get all required inputs", "Human User")
+        G.add_edge("Get all required inputs", "Generate SQL View")
+        G.add_edge("AskModification", "Human User")
+        G.add_edge("AskModification", "Modify the SQL")  # modifications needed
+        G.add_edge("AskModification", "GenerateMail")  # no modifications
+        G.add_edge("Generate SQL View", "Human User")  # for review
+        G.add_edge("Generate SQL View", "GenerateMail")
+        G.add_edge("Modify the SQL", "Human User")  # for review
+        G.add_edge("Modify the SQL", "GenerateMail")
+        G.add_edge("GenerateMail", "Human User")  # for review
+        G.add_edge("GenerateMail", "CreateCR")
+        G.add_edge("CreateCR", "Human User")  # for approval
+        G.add_edge("CreateCR", "RaisePR")
+        G.add_edge("RaisePR", "Human User")  # for verification
+        G.add_edge("RaisePR", "ScheduleDACT")
+        G.add_edge("ScheduleDACT", "Human User")  # for confirmation
+        G.add_edge("ScheduleDACT", "END")
+        
+        # Map the current step to the flow diagram nodes
+        step_mapping = {
+            "ProcessUserInput": "Human User",
+            "CheckCatalog": "CheckCatalog",
+            "AskModification": "AskModification",
+            "GetViewDetails": "Get all required inputs",
+            "GenerateSQLView": "Generate SQL View",
+            "UserReviewSQL": "Human User",
+            "ModifySQL": "Modify the SQL",
+            "GenerateMail": "GenerateMail",
+            "UserApproveEmail": "Human User",
+            "CreateCR": "CreateCR",
+            "UserApproveCR": "Human User",
+            "RaisePR": "RaisePR",
+            "UserVerifyPR": "Human User",
+            "ScheduleDACT": "ScheduleDACT",
+            "UserConfirmDACT": "Human User",
+            "END": "END"
+        }
+        
+        # Determine current node in the flow diagram
+        current_step = state.get("current_step", "ProcessUserInput")
+        current_node = step_mapping.get(current_step, "Human User")
+        
+        # Create node colors based on current step
+        node_colors = []
+        for node in nodes:
+            if node == current_node:
+                node_colors.append('green')  # Current step
+            elif node == "END" and state.get("workflow_complete", False):
+                node_colors.append('blue')  # Completed workflow
+            else:
+                node_colors.append('lightgray')  # Pending step
+        
+        # Create figure
+        plt.figure(figsize=(10, 12))
+        pos = nx.spring_layout(G, seed=42)
+        nx.draw(G, pos, with_labels=True, node_color=node_colors, 
+                node_size=2000, font_size=10, font_weight='bold',
+                arrows=True, arrowsize=15)
+        
+        # Convert plot to image
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close()
+        buf.seek(0)
+        
+        # Display the image
+        return buf
+    except Exception as e:
+        st.error(f"Error rendering workflow graph: {str(e)}")
+        return None
+
+def render_chat_message(message):
+    """Render a chat message with proper styling"""
+    role = message.get("role", "")
+    content = message.get("content", "")
+    timestamp = message.get("timestamp", "")
+    
+    # Format timestamp
+    try:
+        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+    except:
+        formatted_time = timestamp
+    
+    # Check if content contains SQL script
+    if "```sql" in content:
+        # Split content and format SQL parts
+        parts = content.split("```sql")
+        formatted_content = parts[0]
+        for i in range(1, len(parts)):
+            sql_part = parts[i].split("```")[0]
+            rest_part = "```".join(parts[i].split("```")[1:])
+            formatted_content += f'<div class="sql-code">{sql_part}</div>{rest_part}'
+    else:
+        formatted_content = content.replace("\n", "<br>")
+    
+    return f"""
+    <div class="chat-message {role}">
+        <div class="timestamp">{formatted_time} - {role.capitalize()}</div>
+        <div class="content">{formatted_content}</div>
+    </div>
+    """
+
+def initialize_new_session():
+    """Initialize a new session with default values"""
+    # Default values
+    email = "user@example.com"
+    schema = "sales_reporting"
+    view = "monthly_summary"
+    start_date = datetime.now() + timedelta(days=7)
+    start_time = datetime.strptime("10:00", "%H:%M").time()
+    end_date = datetime.now() + timedelta(days=7)
+    end_time = datetime.strptime("11:00", "%H:%M").time()
+    
+    # Format dates for API
+    start_datetime = datetime.combine(start_date, start_time).isoformat() + "Z"
+    end_datetime = datetime.combine(end_date, end_time).isoformat() + "Z"
+    
+    # Initialize session
+    session_id = initialize_session(
+        email=email,
+        views=[{"schema": schema, "view": view}],
+        start_time=start_datetime,
+        end_time=end_datetime
+    )
+    
+    return session_id
+
+def main():
+    # Create a three-column layout
+    left_col, center_col, right_col = st.columns([1, 2, 1])
+    
+    # Left column: Session management
+    with left_col:
+        st.header("Session Management")
+        
+        if st.session_state.session_id:
+            st.success(f"Active Session: {st.session_state.session_id}")
+            if st.button("End Current Session"):
+                st.session_state.session_id = None
+                st.session_state.conversation = []
+                st.session_state.current_state = None
+                st.session_state.session_initialized = False
+                st.rerun()
+        
+        # Session browser
+        if not st.session_state.session_id:
+            st.subheader("Start New Session")
+            
+            if st.button("Create New Session"):
+                session_id = initialize_new_session()
+                st.session_state.session_id = session_id
+                st.session_state.conversation = get_conversation_history(session_id)
+                st.session_state.current_state = load_state(session_id)
+                st.session_state.session_initialized = True
+                st.rerun()
+            
+            st.markdown("---")
+            st.subheader("Load Existing Session")
+            
+            sessions = get_session_registry()
+            
+            if not sessions:
+                st.info("No existing sessions found")
+            else:
+                # Convert to DataFrame for display
+                sessions_data = []
+                for session_id, metadata in sessions.items():
+                    created_at = metadata.get("created_at", "Unknown")
+                    status = metadata.get("status", "Unknown")
+                    email = metadata.get("email", "Unknown")
+                    schema = metadata.get("schema", "Unknown")
+                    view = metadata.get("view", "Unknown")
+                    
+                    sessions_data.append({
+                        "Session ID": session_id,
+                        "Created": created_at,
+                        "Status": status,
+                        "Email": email,
+                        "Schema": schema,
+                        "View": view
+                    })
+                
+                df = pd.DataFrame(sessions_data)
+                st.dataframe(df, height=300)
+                
+                # Session selector
+                selected_session = st.selectbox(
+                    "Select Session to Load",
+                    options=[s["Session ID"] for s in sessions_data]
+                )
+                
+                if st.button("Load Selected Session"):
+                    st.session_state.session_id = selected_session
+                    st.session_state.conversation = get_conversation_history(selected_session)
+                    st.session_state.current_state = load_state(selected_session)
+                    st.session_state.session_initialized = True
+                    st.rerun()
+        
+        # Show SQL toggle when session is active
+        if st.session_state.session_id and st.session_state.current_state and "generated_scripts" in st.session_state.current_state:
+            st.markdown("---")
+            st.subheader("SQL Scripts")
+            st.session_state.show_sql = st.checkbox("Show Generated SQL", value=st.session_state.show_sql)
+            
+            if st.session_state.show_sql:
+                scripts = st.session_state.current_state.get("generated_scripts", {})
+                
+                for view_path, script in scripts.items():
+                    with st.expander(f"SQL for {view_path}"):
+                        st.code(script, language="sql")
+    
+    # Center column: Chat interface
+    with center_col:
+        st.title("SQL View Deployment Assistant")
+        
+        if st.session_state.session_id:
+            # Chat container for conversation history
+            chat_container = st.container(height=500)
+            with chat_container:
+                # Update conversation from storage if needed
+                st.session_state.conversation = get_conversation_history(st.session_state.session_id)
+                
+                # Display messages
+                for message in st.session_state.conversation:
+                    st.markdown(render_chat_message(message), unsafe_allow_html=True)
+            
+            # Show awaiting input hint if applicable
+            awaiting_input = st.session_state.current_state.get("awaiting_input_type", None)
+            if awaiting_input:
+                st.markdown(f"<div class='awaiting-input'>The system is waiting for: {awaiting_input}</div>", unsafe_allow_html=True)
+            
+            # User input area
+            user_input = st.chat_input("Type your message here...")
+            
+            if user_input:
+                # Process user input
+                state = process_user_action(st.session_state.session_id, user_input)
+                
+                if state:
+                    st.session_state.current_state = state
+                    st.session_state.conversation = get_conversation_history(st.session_state.session_id)
+                    st.rerun()
+                else:
+                    st.error("Error processing your request. Please try again.")
+        else:
+            st.info("Please create a new session or load an existing one to start.")
+    
+    # Right column: Workflow visualization
+    with right_col:
+        st.header("Workflow Status")
+        
+        if st.session_state.session_id and st.session_state.current_state:
+            current_step = st.session_state.current_state.get("current_step", "Unknown")
+            awaiting_input = st.session_state.current_state.get("awaiting_input_type", "None")
+            
+            st.markdown(f"<div class='workflow-status'>Current Step: {current_step}</div>", unsafe_allow_html=True)
+            if awaiting_input:
+                st.markdown(f"<div class='awaiting-input'>Awaiting: {awaiting_input}</div>", unsafe_allow_html=True)
+            
+            # Show workflow visualization
+            st.subheader("Workflow Visualization")
+            with st.container(height=600):
+                graph_image = render_workflow_graph(st.session_state.current_state)
+                if graph_image:
+                    st.image(graph_image, use_column_width=True)
+                else:
+                    st.error("Could not render workflow graph")
+            
+            # Show session details
+            with st.expander("Session Details"):
+                if st.session_state.current_state:
+                    # Display key state information
+                    st.json({
+                        "session_id": st.session_state.current_state.get("session_id", ""),
+                        "email": st.session_state.current_state.get("email", ""),
+                        "current_step": st.session_state.current_state.get("current_step", ""),
+                        "awaiting_input": st.session_state.current_state.get("awaiting_input_type", ""),
+                        "created_at": st.session_state.current_state.get("created_at", ""),
+                        "last_updated": st.session_state.current_state.get("last_updated", "")
+                    })
+        else:
+            st.info("No active session. Please create or load a session to see the workflow status.")
+
+if __name__ == "__main__":
+    main()
