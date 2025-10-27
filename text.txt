@@ -1,91 +1,197 @@
-Here is the current list of **Core Functionalities** implemented in your multi-agent system, based on the finalized code:
+detailed itinerary for your Malaysia trip from Nov 20 to Nov 26, including:
 
----
+Penang (Flamingo Hotel by the Beach)
+Kuala Lumpur (Regalia Upper View Hotel)
+All travel times, distances, durations
+Ticket booking info
+Top attractions, food, and photo spots
 
-### ✅ **Core Functionalities**
 
-#### 1. **LangGraph Orchestration (`graph.py`)**
+🗓️ DAY 0: Nov 20 – Wednesday
+🚆 Nellore to Chennai
 
-* Defines a **stateful workflow** using `StateGraph`
-* Manages agent routing using **intent classification**
-* Connects all agents and defines **entry + finish points**
-* Handles **dynamic transitions** between nodes (multi-agent flow)
+Mode: Train or cab
+Estimated Travel Time: ~5–6 hours
+Suggested Arrival in Chennai: By 10:00 PM
 
----
 
-#### 2. **Natural Language Understanding (`nlu.py`)**
+🗓️ DAY 1: Nov 21 – Thursday (Penang Arrival & Light Exploration)
+✈️ Flight: Chennai to Penang
 
-* Uses LLM to **detect user intent** (e.g., `sql`, `email`, `general`)
-* Intent determines which agent should process the query
-* Allows **open-ended user inputs** without hardcoded rules
+Departure: 2:20 AM
+Arrival: ~8:30 AM at Penang International Airport
+Distance to Hotel: ~24.3 km | 🚕 ~22 min | RM 50–65 [rome2rio.com]
 
----
+🏨 Hotel: Flamingo Hotel By the Beach
 
-#### 3. **Agent Framework (`agents/`)**
+Check-in: 3:00 PM (early check-in requested)
 
-* Modular agents for handling specific tasks:
 
-  * `sql_agent.py`: Generates SQL views
-  * `email_agent.py`: Drafts professional emails
-  * `general_agent.py`: Uses RAG to answer questions contextually
-* Agents are **LLM-driven** and stateless (except for memory context)
+🕒 Itinerary
+10:30 AM – George Town Street Art Trail
 
----
+📍 Distance from hotel: ~10 km | 🚕 ~9 min | 🚌 ~30 min [rome2rio.com]
+📸 Explore Armenian Street murals
+⏱️ Time Needed: ~1.5 hours
 
-#### 4. **Memory Management (`memory.py`)**
+12:30 PM – Lunch at Tek Sen Restaurant
 
-* Uses **LangChain's `ConversationBufferMemory`**
-* Stores **multi-turn chat history**
-* Enables **contextual understanding** across sessions
-* Memory is passed through LangGraph as part of state
+🍖 Famous for Double Roasted Pork, Sweet & Sour Pork
+⏱️ Time Needed: ~1 hour
 
----
+2:00 PM – Rainbow Skywalk at The TOP, Komtar Tower
 
-#### 5. **LLM Configuration (`llm.py`)**
+📍 Distance from Tek Sen: ~1 km | 🚶 ~10 min
+🌈 Glass skywalk at 816 ft above sea level
+⏱️ Time Needed: ~1.5 hours
+🎟️ Book Tickets [thetop.com.my]
 
-* Uses **Databricks Llama Maverick 4** for LLM tasks
-* Embedding model: `BGE-Large-EN` (via HuggingFace)
-* Central LLM + embedding abstraction used across system
+4:00 PM – Coffee at China House
 
----
+☕ Famous for cakes and artsy vibes
+⏱️ Time Needed: ~1 hour
 
-#### 6. **Retrieval-Augmented Generation (RAG)**
+6:00 PM – Gurney Drive Hawker Centre
 
-* **Two-part system**:
+📍 Distance from Rainbow Skywalk: ~3.5 km | 🚕 ~10 min [penang-tra...eltips.com]
+🍽️ Try Char Kway Teow, Asam Laksa, Satay, Oyster Omelette
+⏱️ Time Needed: ~1.5 hours
+🕒 Open: 5:00 PM – 11:00 PM
 
-  * `doc_loader.py`: Developer-controlled embedding & indexing
-  * `rag.py`: Runtime document retrieval + QA over indexed content
-* Enables **autonomous retrieval** when agent lacks answer context
 
----
+🗓️ DAY 2: Nov 22 – Friday (Penang Full Day)
+8:30 AM – Penang Hill & The Habitat
 
-#### 7. **Autonomous Knowledge Control**
+📍 Distance from hotel: ~14.2 km | 🚕 ~15 min | RM 30–40 [rome2rio.com]
+🚠 Funicular train to summit
+🌳 Canopy walk, Curtis Crest
+⏱️ Time Needed: ~2.5 hours
 
-* Agent automatically decides whether to use RAG based on intent (via `general_agent.py`)
-* Decouples document processing (embedding) from query-time retrieval
+11:30 AM – Kek Lok Si Temple
 
----
+📍 Distance from Penang Hill: ~3.9 km | 🚕 ~6 min | RM 13–17 [rome2rio.com]
+🛕 Malaysia’s largest Buddhist temple
+⏱️ Time Needed: ~2 hours
+🎟️ Inclined Lift: RM 8 (one-way), RM 16 (return) [onpenang.com]
 
-#### 8. **Conversation Loop (`main.py`)**
+1:30 PM – Lunch at Air Itam
 
-* Accepts user input
-* Maintains session memory
-* Triggers graph execution
-* Streams final agent response back to user
+🍜 Try Penang Assam Laksa or Chicken Rice
 
----
+3:00 PM – Return to Hotel
 
-#### 9. **Extensibility**
+📍 Distance from Kek Lok Si: ~13.8 km | 🚕 ~13 min | RM 30–40 [rome2rio.com]
+⏱️ Rest or beach walk
 
-* Easily add more agents (e.g., calendar, file handling, HR support)
-* Swappable LLM backends
-* Multi-user memory support (with session keys)
+6:00 PM – Dinner at Long Beach Café (Batu Ferringhi)
 
----
+📍 Distance from hotel: ~6 km | 🚕 ~10 min
+🍢 Grilled seafood, satay, Char Koay Teow
+⏱️ Time Needed: ~1.5 hours
 
-Let me know if you’d like to:
 
-* Add new agent types
-* Store memory in Redis or Chroma for persistence
-* Enhance NLU with classification confidence or few-shot examples
-* Visualize the LangGraph structure for debugging and documentation
+🗓️ DAY 3: Nov 23 – Saturday (Penang to KL)
+✈️ Flight: Penang to Kuala Lumpur
+
+Departure: 1:25 PM
+Arrival: 2:25 PM at KLIA
+
+🏨 Hotel: Regalia Upper View Hotel
+
+Check-in: From 2:00 PM
+
+
+🕒 Evening in KL
+5:00 PM – Pavilion KL Mall
+
+📍 Distance from hotel: ~4 km | 🚕 ~10 min
+🛍️ Shopping, Tokyo Street, Dining Loft
+⏱️ Time Needed: ~2 hours
+
+7:30 PM – Dinner at El Cerdo or Palillos Yakitori Bar
+
+📍 Distance from Pavilion: ~1 km | 🚕 ~5 min
+🐖 El Cerdo: Iberico ribs, suckling pig
+🍢 Palillos: Japanese skewers
+⏱️ Time Needed: ~1.5 hours
+
+9:30 PM – Jalan Alor Night Market
+
+📍 Distance from dinner: ~1 km | 🚕 ~5 min
+🍢 Street food: Satay, grilled seafood
+⏱️ Time Needed: ~1.5 hours
+
+
+🗓️ DAY 4: Nov 24 – Sunday (KL Full Day)
+8:30 AM – Breakfast at Super Boring Club
+
+📍 Bukit Bintang
+🍳 Try beef tataki, BBQ combo
+⏱️ Time Needed: ~1 hour
+
+10:00 AM – Batu Caves
+
+📍 Distance from hotel: ~10.3 km | 🚕 ~10 min | 🚆 ~18 min via KTM Komuter [rome2rio.com]
+🛕 Lord Murugan statue, colorful staircase
+⏱️ Time Needed: ~2 hours
+🎟️ Entry: Free
+
+1:00 PM – Lunch near Batu Caves
+
+🍛 Choose from:
+
+Pan Heong Restaurant – Sang Har Hor Fun
+Oh Yeah Banana Leaf – Chicken 65, Bamboo Biryani
+Kanna Curry House – Fish Head Curry
+
+
+⏱️ Time Needed: ~1.5 hours
+
+3:00 PM – Return to Hotel & Rest
+5:30 PM – KL Tower (Sunset View)
+
+📍 Distance from hotel: ~2.5 km | 🚕 ~7 min
+🗼 Sky Deck & Sky Box
+⏱️ Time Needed: ~1.5 hours
+🎟️ https://ticket.kltower.com/ [rome2rio.com]
+
+7:30 PM – Dinner at JP Teres (Grand Hyatt KL)
+
+📍 Distance from KL Tower: ~2.5 km | 🚕 ~7 min
+🍗 Satay, Chicken Rice, Lamb Curry
+⏱️ Time Needed: ~1 hour
+https://www.tablecheck.com/en/grand-hyatt-kuala-lumpur-jp-teres/reserve
+
+
+🗓️ DAY 5: Nov 25 – Monday (KL Leisure Day)
+10:00 AM – I ❤️ KL Statue & Merdeka Square
+
+📍 Distance from hotel: ~3 km | 🚕 ~10 min
+📸 Snap photos, explore colonial architecture
+⏱️ Time Needed: ~1 hour
+
+12:00 PM – Petronas Twin Towers & KLCC Park
+
+📍 Distance from Merdeka Square: ~2.5 km | 🚕 ~7 min
+🏙️ Skybridge & Observation Deck
+📸 Saloma Link Bridge
+⏱️ Time Needed: ~3.5 hours
+🎟️ https://eticket.petronastwintowers.com.my/
+
+4:00 PM – Suria KLCC Mall
+
+🛍️ Shopping, coffee, Aquaria KLCC
+⏱️ Time Needed: ~1 hour
+
+6:00 PM – Dinner & Drinks at TREC KL
+
+📍 Distance from KLCC: ~2.5 km | 🚕 ~7 min
+🍸 Rooftop bars, lounges, Zouk Club
+⏱️ Time Needed: Flexible
+
+
+🗓️ DAY 6: Nov 26 – Tuesday
+✈️ Flight: Kuala Lumpur to Chennai
+
+Departure: 5:45 AM from KLIA
+Arrival: ~7:00 AM in Chennai
